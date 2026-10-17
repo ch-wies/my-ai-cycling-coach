@@ -47,3 +47,7 @@ The README.md file contains all information regarding setup.
 - Release branches are named `release/vN` (e.g. `release/v4`), the version number is fixed when the branch is opened
 - Best practice for features is to branch off of the release branch
 - All merges to `main` get a version tag (`v1`, `v2`, `v3`, ...) matching the release branch name. Note that this convention starts with the `v1` tag.
+
+## Anthropic API calls
+
+Since calls to the Anthropic API will be billed directly, always ask before making any such calls. If possible give a cost estimate.
