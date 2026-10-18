@@ -1,7 +1,7 @@
 ---
 title: Derive a moving mask algorithmically
 status: draft   # see tasks/WORKFLOW.md for the lifecycle
-release:        # see tasks/WORKFLOW.md; can be set before status: ready
+release: v5     # see tasks/WORKFLOW.md; can be set before status: ready
 ---
 
 ## Problem / Context

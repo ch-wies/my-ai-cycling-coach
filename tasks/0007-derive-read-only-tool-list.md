@@ -1,7 +1,7 @@
 ---
 title: Derive inspect_activity.py's read-only tool list from TOOLS
-status: draft   # see tasks/WORKFLOW.md for the lifecycle
-release:        # see tasks/WORKFLOW.md; can be set before status: ready
+status: ready   # see tasks/WORKFLOW.md for the lifecycle
+release: v5     # see tasks/WORKFLOW.md; can be set before status: ready
 ---
 
 ## Problem / Context
