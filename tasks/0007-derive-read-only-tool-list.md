@@ -6,7 +6,8 @@ release: v5     # see tasks/WORKFLOW.md; can be set before status: ready
 
 ## Problem / Context
 
-`src/data/inspect_activity.py` (added in story 0005) hard-codes
+`scripts/inspect_activity.py` (added in story 0005 as
+`src/data/inspect_activity.py`, moved to `scripts/` by 0013) hard-codes
 `_READ_ONLY_TOOLS` as a literal list of 6 tool names:
 
 ```python
@@ -42,7 +43,7 @@ filter would need revisiting — see Out of Scope.
 
 ## Acceptance Criteria
 
-- [ ] `_READ_ONLY_TOOLS` in `src/data/inspect_activity.py` is no longer a
+- [ ] `_READ_ONLY_TOOLS` in `scripts/inspect_activity.py` is no longer a
       hand-maintained literal list of names — it's derived from `TOOLS`
       (`src/ai/tools.py`).
 - [ ] The derived list, run against today's `TOOLS`, produces the same six
@@ -64,7 +65,9 @@ filter would need revisiting — see Out of Scope.
 
 ## Technical Decisions
 
-- New helper, local to `src/data/inspect_activity.py` (not exported from
+- **Depends on 0013.** 0013 moves the script to `scripts/` and must be
+  implemented first; this story only edits it at the new location.
+- New helper, local to `scripts/inspect_activity.py` (not exported from
   `src/ai/tools.py` — this is a dev-tool concern, not something the
   production tool-dispatch code needs, so it stays out of `tools.py`):
   ```python
@@ -82,7 +85,8 @@ filter would need revisiting — see Out of Scope.
 
 ## Test Plan
 
-- Unit test in a new `tests/test_inspect_activity.py`: build a small fake
+- Unit test in a new `tests/test_inspect_activity.py` (importing from
+  `scripts.inspect_activity`): build a small fake
   `list[ToolParam]` (2-3 entries: one requiring `activity_id`, one not,
   mirroring `list_recent_activities` vs the rest) and assert
   `_read_only_tool_names` returns exactly the expected subset, in input

@@ -193,9 +193,9 @@ Stories 0011/0012 (decoupling) build on that last one.
   indoor one, `Σ sample_weights[moving_mask]` is within
   `max(30 s, 0.5%)` of intervals.icu `moving_time`. Record the worst case
   in Implementation Notes.
-- Manual: run the `inspect_activity` dev script (at
-  `scripts/inspect_activity.py` if 0013 is done, otherwise
-  `src/data/inspect_activity.py`) on one outdoor ride with real stops and
+- Manual: run the `inspect_activity` dev script
+  (`scripts/inspect_activity.py`; 0013 is implemented first) on one
+  outdoor ride with real stops and
   one indoor ride. Check the tool output shows plausible moving | full
   averages, a stop count, and (indoor) no stops.
 

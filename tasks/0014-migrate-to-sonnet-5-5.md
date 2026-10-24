@@ -61,8 +61,8 @@ than as an incidental edit.
   instead of `claude-sonnet-5-5` (Opus's reported gains skew toward
   agentic/judgment-heavy work, which plan generation arguably is). Tested
   by generating the same plan from real saved goals with both models
-  (`dev_files/compare_plan_models.py`, outputs in
-  `dev_files/plan_compare/`) and manually reviewing the output. Verdict:
+  (`scratch/compare_plan_models.py`, formerly under `dev_files/`; its
+  outputs were not kept) and manually reviewing the output. Verdict:
   little practical benefit from Opus for this task, at ~2x the cost
   (~$0.26 vs ~$0.53 per plan-narrative call, from actual token usage) —
   staying with `claude-sonnet-5-5` everywhere, per the single-constant

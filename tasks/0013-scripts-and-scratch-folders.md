@@ -55,6 +55,12 @@ This story introduces a clear split:
       scripts.export_for_bench`.
 - [ ] `src/data/intervals_api.py`'s module docstring reference to
       `src/data/inspect_activity.py` updated to `scripts/inspect_activity.py`.
+- [ ] The usage lines in both moved scripts' own module docstrings
+      (`python -m src.data.inspect_activity …`,
+      `python -m src.data.export_for_bench …`) updated to the
+      `python -m scripts.…` form.
+- [ ] `interval_detection/bench/README.md`'s reference to
+      `src/data/export_for_bench.py` updated to `scripts/export_for_bench.py`.
 - [ ] `dev_files/` renamed to `scratch/`; `.gitignore`'s `dev_files/` entry
       updated to `scratch/`; all existing contents preserved under the new
       name (this is only relevant for the machine where this change is executed). The stale `__pycache__/` under the old
@@ -115,12 +121,12 @@ This story introduces a clear split:
 - Adding coverage tooling/config — deferred, as discussed above; this story
   only makes that easier to add later, it doesn't add it.
 - Rewriting references to the old `src/data/inspect_activity.py` /
-  `src/data/export_for_bench.py` paths inside existing `tasks/*.md` story
-  files (0004, 0005, 0007) — those are a historical record of decisions
-  made at the time and are left unchanged.
+  `src/data/export_for_bench.py` paths inside done `tasks/*.md` story
+  files (0004, 0005) — those are a historical record of decisions made at
+  the time and are left unchanged.
 - Implementing story 0007 (deriving `_READ_ONLY_TOOLS` from `TOOLS`) — it
-  remains a separate, unimplemented story; once it proceeds, it will target
-  `scripts/inspect_activity.py` at its new location.
+  remains a separate story, already written against
+  `scripts/inspect_activity.py`, and is implemented after this one.
 - Any behavioral change to `inspect_activity.py` or `export_for_bench.py`
   beyond the import/path fixes required by the move.
 
