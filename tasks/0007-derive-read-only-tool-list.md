@@ -1,6 +1,6 @@
 ---
 title: Derive inspect_activity.py's read-only tool list from TOOLS
-status: ready   # see tasks/WORKFLOW.md for the lifecycle
+status: done   # see tasks/WORKFLOW.md for the lifecycle
 release: v5     # see tasks/WORKFLOW.md; can be set before status: ready
 ---
 
@@ -115,3 +115,21 @@ filter would need revisiting — see Out of Scope.
 <!-- Filled in during/after implementation, not during drafting. What was
      actually built, especially where it deviates from Technical
      Decisions and why, plus any concrete results worth recording. -->
+
+Implemented as drafted.
+
+- `_READ_ONLY_TOOLS` replaced by `_read_only_tool_names(tools)` in
+  `scripts/inspect_activity.py`. The limitation comment sits directly above
+  it, and `_print_tool_outputs` iterates `_read_only_tool_names(TOOLS)`.
+- Small addition to the drafted filter: an `isinstance(required, (list,
+  tuple))` guard. `ToolParam.input_schema` is typed `InputSchemaTyped |
+  Dict[str, object]`, so `required` is `object` on the dict branch and mypy
+  rejects `in` on it without narrowing. Behaviour is unchanged for real
+  schemas.
+- `tests/test_inspect_activity.py`: the fake-tools subset/order test, and
+  the real-`TOOLS` test pinning the six current names in order.
+
+Verification:
+- `./check.sh`: all pass (337 tests, 2 new).
+- `python -m scripts.inspect_activity i198684687`: the same six
+  `--- <tool> ---` sections as before, in the same order, exit 0.

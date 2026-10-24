@@ -14,22 +14,23 @@ Usage:
 
 import sys
 
-from anthropic.types import ToolUseBlock
+from anthropic.types import ToolParam, ToolUseBlock
 
-from src.ai.tools import _execute_tool
+from src.ai.tools import TOOLS, _execute_tool
 from src.data.activity import Activity
 from src.data.intervals_api import IntervalsClient
 
-# Read-only tools only — mirrors the dispatch table in src/ai/tools.py
-# (no write/mutating tools exist today; exclude any if added later).
-_READ_ONLY_TOOLS = [
-    "get_activity_details",
-    "get_activity_power_curve",
-    "get_activity_training_load",
-    "get_activity_efficiency",
-    "get_activity_intervals",
-    "get_activity_zones",
-]
+
+# Assumes every tool requiring activity_id is read-only. True today (TOOLS has
+# no mutating tools), but a mutating per-activity tool added later would be
+# picked up here too, so revisit this filter if one is ever added.
+def _read_only_tool_names(tools: list[ToolParam]) -> list[str]:
+    names = []
+    for tool in tools:
+        required = tool["input_schema"].get("required") or []
+        if isinstance(required, (list, tuple)) and "activity_id" in required:
+            names.append(tool["name"])
+    return names
 
 
 def _print_stream_summary(activity: Activity) -> None:
@@ -41,7 +42,7 @@ def _print_stream_summary(activity: Activity) -> None:
 
 
 def _print_tool_outputs(activity_id: str, client: IntervalsClient) -> None:
-    for tool_name in _READ_ONLY_TOOLS:
+    for tool_name in _read_only_tool_names(TOOLS):
         block = ToolUseBlock(
             id=f"inspect_{tool_name}",
             name=tool_name,
