@@ -44,6 +44,6 @@ Thumbs.db
 data/*.fit
 .cache/
 *.log
-dev_files/
+scratch/
 features_notes.md
 .coverage

@@ -6,7 +6,7 @@ workflow: it dumps an activity to a stripped ``t,power`` CSV that the
 app -> package.
 
 Usage:
-    python -m src.data.export_for_bench <activity_id> [<activity_id> ...]
+    python -m scripts.export_for_bench <activity_id> [<activity_id> ...]
 
 Writes the (t, power) trace to bench/activities/<id>.csv and seeds the
 annotation file bench/labels/<id>.json with auto-derived meta (indoor /
@@ -21,7 +21,7 @@ import pandas as pd
 
 from src.data.intervals_api import IntervalsClient
 
-_BENCH_DIR = Path(__file__).resolve().parents[2] / "interval_detection" / "bench"
+_BENCH_DIR = Path(__file__).resolve().parents[1] / "interval_detection" / "bench"
 BENCH_ACTIVITIES_DIR = _BENCH_DIR / "activities"
 
 # Reuse the bench's annotation IO so the schema lives in one place.

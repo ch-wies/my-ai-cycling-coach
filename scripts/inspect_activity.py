@@ -9,7 +9,7 @@ IntervalsClient) and live network access, so this stays a manual dev tool —
 not wired into pytest.
 
 Usage:
-    python -m src.data.inspect_activity <activity_id>
+    python -m scripts.inspect_activity <activity_id>
 """
 
 import sys

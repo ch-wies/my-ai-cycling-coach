@@ -248,7 +248,7 @@ def main() -> int:
     if not ids:
         print(
             f"No activities in {labelio.ACTIVITIES_DIR}.\n"
-            f"Export some first, e.g.:  python -m src.data.export_for_bench <activity_id>"
+            f"Export some first, e.g.:  python -m scripts.export_for_bench <activity_id>"
         )
         return 1
     app = QtWidgets.QApplication(sys.argv)

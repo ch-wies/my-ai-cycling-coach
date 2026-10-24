@@ -1,6 +1,6 @@
 ---
 title: Introduce scripts/ and scratch/ folders for dev tooling
-status: ready   # see tasks/WORKFLOW.md for the lifecycle
+status: done   # see tasks/WORKFLOW.md for the lifecycle
 release: v5     # see tasks/WORKFLOW.md; can be set before status: ready
 ---
 
@@ -135,3 +135,30 @@ This story introduces a clear split:
 <!-- Filled in during/after implementation, not during drafting. What was
      actually built, especially where it deviates from Technical
      Decisions and why, plus any concrete results worth recording. -->
+
+Implemented as drafted, no deviations from Technical Decisions.
+
+- `git mv` for both scripts (history preserved); `scripts/__init__.py` is
+  empty. Docstring usage lines, `_BENCH_DIR` (`parents[2]` → `parents[1]`),
+  the `label_tool.py` hint, the `intervals_api.py` docstring and
+  `interval_detection/bench/README.md` updated.
+- `dev_files/` → `scratch/` with a plain `mv` (gitignored); stale
+  `__pycache__/` dropped. `dev_files` references in
+  `print_activity_intervals.py`, `get_all_strava_activities.py` and
+  `compare_plan_models.py` (usage lines, sys.path comments, the
+  `plan_compare/` docstring path) replaced. Their path logic is relative to
+  `__file__`, so no code change was needed.
+- CLAUDE.md Project Structure documents `scripts/` and `scratch/`.
+
+Verification:
+- `./check.sh`: all pass (335 tests); no ruff/mypy config change needed.
+- `python -m scripts.inspect_activity i198684687` (MountainBikeRide): stream
+  summary plus all six tool dumps, exit 0.
+- `python -m scripts.export_for_bench i194752827` wrote
+  `interval_detection/bench/activities/i194752827.csv` and seeded
+  `labels/i194752827.json` (`intervals: null`), confirming the `_BENCH_DIR`
+  fix. Both files were deleted afterwards so the bench stays unchanged.
+  Every existing bench activity has an old Strava ID that intervals.icu no
+  longer resolves (404), so an in-place re-export wasn't possible.
+- `scratch/` has all former contents, `dev_files/` is gone, and a new file
+  under `scratch/` doesn't show up in `git status`.

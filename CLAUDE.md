@@ -23,6 +23,8 @@ The README.md file contains all information regarding setup.
 - `interval_detection` - Standalone Python package for interval detection with its own test bench (imported by the main application)
 - `assets`- Assets used by App
 - `tests`- Test bench for App
+- `scripts/` - Tracked dev tooling that exercises production code paths for manual verification, run as `python -m scripts.<name>`
+- `scratch/` - Gitignored, throwaway/ephemeral files (notes, one-off exploration scripts), never reviewed or kept
 
 ## Coding Conventions
 

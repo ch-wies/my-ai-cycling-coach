@@ -15,7 +15,7 @@ has been confirmed against a live response; the per-activity metadata fields
 and stream type names (watts/heartrate/cadence/altitude/velocity_smooth/temp)
 have NOT been independently verified — check them against a real
 download_activity() call and adjust _normalize_activity / _build_activity if
-any don't match. `src/data/inspect_activity.py` is a standalone dev script
+any don't match. `scripts/inspect_activity.py` is a standalone dev script
 for exactly this kind of live verification.
 """
 

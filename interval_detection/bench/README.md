@@ -4,7 +4,7 @@ Test bench for the interval detector.
 
 - `activities/` — activities in the neutral CSV format (`t,power`), one file per
   activity (`<activity_id>.csv`). Produced by the app-side export script
-  (`src/data/export_for_bench.py` in the fit-data-viewer app while co-located).
+  (`scripts/export_for_bench.py` in the fit-data-viewer app while co-located).
 - `labels/` — ground-truth interval labels, one JSON per activity
   (`<activity_id>.json`), each a list of `[start_s, end_s]` pairs.
 - `labelio.py` — pure (no-GUI) load/save helpers for activities and labels.
