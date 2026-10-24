@@ -49,8 +49,12 @@ described.
       heart rate.
 - [ ] The output reports stops: total stopped time (minutes and % of
       elapsed time) and the duration of the longest single stop, or
-      "none" if there were no stops. This covers both stopped samples
-      (moving mask false) and recording pauses (time gaps).
+      "none" if there were no stops. Stops come only from the shared
+      `stop_durations()` helper from 0008, which covers mask-false
+      stretches and recording gaps, each at least `MIN_STOP_S`. Stops
+      before the first or after the last moving sample are ignored.
+- [ ] If `moving_mask()` returns `None` (no speed stream), the line reads
+      `Stopped time: unavailable (no speed stream)`.
 - [ ] The existing output is unchanged otherwise: the decoupling line,
       the average power split and the speed split keep their current
       format, so existing tests pass unmodified.
@@ -73,6 +77,11 @@ described.
 - **Where:** all changes are in `src/ai/tools.py`: the
   `get_activity_efficiency` entry in `TOOLS` (description) and
   `_get_activity_efficiency` (output). No changes to `src/analysis/`.
+- **Depends on 0008.** The moving mask (`speed > 0`) and
+  `stop_durations()` are the single source of truth for moving and
+  stopped. This story adds no moving or stop logic of its own. Without
+  0008 the mask is always `None` and the stops line would always read
+  unavailable.
 - **NP per half:** reuse `normalized_power(power, time_array)` from
   `src/analysis/activity_metrics.py`, called on the half's samples:
   `normalized_power(power[h], time_array[h])` for each half mask `h` from
@@ -88,20 +97,23 @@ described.
   Omitted if average power is missing or zero.
 - **HR per half:** `weighted_average(hr, time_array, h)` (the same values
   already computed for decoupling), formatted as whole bpm.
-- **Stops:** a stop is the wall-clock gap between two consecutive moving
-  samples that is larger than the gap threshold used by `sample_weights`
-  (`max(GAP_FACTOR * median dt, MIN_GAP_SECONDS)`). Moving samples are
-  those where `moving_mask` is true, or all samples if it returns `None`
-  (consistent with `_moving_halves`). Working from the timestamps of moving
-  samples catches both kinds of stop in one rule: stopped samples (moving
-  mask false) and recording pauses (time gaps, which `sample_weights`
-  hides). Stops before the first or after the last moving sample are
-  ignored, since they don't fall between the halves.
-  - Implemented as a small private helper in `src/ai/tools.py`, e.g.
-    `_stops(time_array, mask) -> tuple[float, float]` returning total
-    and longest stop in seconds.
-  - Elapsed time for the percentage is first-to-last moving sample.
+- **Stops:** use `stop_durations(time_array, mask)` from 0008, so the stop
+  definition (mask-false stretches plus recording gaps, at least
+  `MIN_STOP_S`) is identical to the stop count in `get_activity_details`.
+  - Leading and trailing stops are dropped by passing only the slice from
+    the first to the last moving sample (`time_array[i:j+1]`,
+    `mask[i:j+1]`). Then no stop can touch the edges, and the helper needs
+    no edge parameter. Such stops don't split the effort: standing still
+    before rolling off or after finishing shouldn't make the coach
+    discard decoupling.
+  - Total = sum of the durations; longest = their maximum.
+  - Elapsed time for the percentage is the wall-clock span of that same
+    slice (first to last moving sample).
   - Minutes are rounded to whole minutes.
+  - `mask is None` → `Stopped time: unavailable (no speed stream)`. The
+    halves still treat every sample as moving (unchanged
+    `_moving_halves`), but stops can't be checked, and saying "none"
+    would claim a check that didn't happen.
 - **Output format:** the stops line goes after the decoupling line, before
   the splits block. The new per-half lines go in the existing splits
   block, after the `Power` line and before `Speed`:
@@ -153,14 +165,22 @@ Automated, in `TestGetActivityEfficiency` in `tests/test_ai_tools.py`
   that the new lines catch within-half unevenness.
 - HR missing: the decoupling line still shows "needs both power and heart
   rate", the NP/VI lines are present, and there is no `Heart rate` line.
-- Stops, using an activity with timestamps and a `moving` stream:
+- Stops, using an activity with timestamps and a `speed` stream, with
+  stops expressed as zero-speed stretches (0008's convention):
   - No stops: output contains `Stopped time: none`.
   - Several short stops vs one long stop with the same total: both report
     the same total, but the longest stop differs (short vs long).
   - A recording pause (time gap with no samples) is counted as a stop,
-    the same as a run of samples with `moving` false.
-  - `_stops` unit tests for the helper directly (total and longest in
-    seconds; leading/trailing stops ignored).
+    the same as a zero-speed stretch.
+  - A zero-speed run shorter than `MIN_STOP_S` is not reported.
+  - Zero-speed stretches at the very start and end are ignored: an
+    activity whose only stops are at the edges reports
+    `Stopped time: none`.
+  - No speed column: output contains
+    `Stopped time: unavailable (no speed stream)`, and the rest of the
+    output is still rendered.
+  - The stop definition itself (`stop_durations`) is unit-tested in 0008
+    and isn't retested here.
 - Existing efficiency tests pass unchanged (format of the existing lines is
   preserved).
 - Test asserting the `get_activity_efficiency` description in `TOOLS`
@@ -179,7 +199,9 @@ Manual (needs Anthropic API calls, run by the user):
 
 - Changing how decoupling itself is calculated (half-split, Pw:Hr ratio),
   and any code-side validity gate. That is the subject of 0011 and 0012.
-- Changing the moving mask or the half-split logic (`_moving_halves`).
+- Changing the moving mask, the stop definition (`stop_durations`,
+  `MIN_STOP_S`; both owned by 0008) or the half-split logic
+  (`_moving_halves`).
   Stopped samples stay excluded from the per-half numbers; long stops are
   surfaced through the stops line instead.
 - Changes to the coach's system prompt. The guidance lives in the tool

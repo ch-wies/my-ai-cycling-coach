@@ -92,10 +92,22 @@ Stories 0011/0012 (decoupling) build on that last one.
 - [ ] The `"moving"` exclusion in `Activity.available_metrics`
       (`src/data/activity.py:80`) and its comment are removed (nothing
       produces that column any more).
-- [ ] `time_summary()` counts a stop only for a not-moving run lasting at
-      least `MIN_STOP_S = 10` seconds (a named module constant, measured
-      with `sample_weights`, not sample counts). The mask itself is not
-      filtered, so moving time and averages use the raw `speed > 0` mask.
+- [ ] A public helper `stop_durations(time_array, mask) -> list[float]` in
+      `src/analysis/activity_metrics.py` returns the duration in seconds of
+      every stop, in time order. This is the single stop definition, also
+      used by 0015. A stop is a contiguous stretch of not-moving time
+      lasting at least `MIN_STOP_S = 10` seconds (a named module constant).
+      Not-moving time is:
+      - mask-false samples, measured with `sample_weights` (durations, not
+        sample counts), and
+      - recording gaps (time deltas above the `sample_weights` gap
+        threshold), counted as the part of the delta that `sample_weights`
+        does not assign to a sample (delta − median dt).
+      A gap next to a mask-false run, or between two of them, merges into
+      one stop. Leading and trailing stops are included.
+- [ ] `time_summary()`'s `stops` count is the number of entries from
+      `stop_durations()`. The mask itself is not filtered, so moving time
+      and averages use the raw `speed > 0` mask.
 - [ ] `time_summary()` keeps preferring metadata `total_moving_time` for
       `moving_s` when present (unchanged).
 - [ ] The module docstring of `src/analysis/activity_metrics.py` and the
@@ -143,6 +155,17 @@ Stories 0011/0012 (decoupling) build on that last one.
   would make moving time diverge from intervals.icu for no gain. 10 s is
   a judgement call (a track stand or slow hairpin isn't a "stop"); it's a
   named constant so it can be revisited.
+- **Recording gaps count as stops.** `time_summary()`'s `stopped_s`
+  (elapsed − moving) already treats pause time as stopped, so the stop
+  count should agree with it. On a ride recorded with auto-pause, a café
+  stop shows up only as a gap. `sample_weights` deliberately hides gaps
+  from moving time, so `stop_durations()` adds them back explicitly.
+- **One shared stop helper.** `stop_durations()` is public so 0015
+  (stopped time and longest stop in the efficiency tool) uses the same
+  definition, and the Time section and the efficiency tool never disagree.
+  It returns durations rather than a count so callers can take a count,
+  a total or a maximum. It takes the mask as a non-optional argument;
+  callers decide what a missing mask means.
 
 ## Test Plan
 
@@ -152,10 +175,16 @@ Stories 0011/0012 (decoupling) build on that last one.
   - a stray `"moving"` column is ignored (the mask follows speed);
   - no speed column → `None`; empty speed series → `None`;
   - NaN speed → not moving;
-  - `time_summary` stop counting: a 5 s zero run is not counted, a 10 s
-    and a 60 s zero run are; a stop at the very start of the activity is
-    counted; with non-1 Hz sampling the threshold uses durations (e.g.
-    zero runs at 2 s sampling).
+  - `stop_durations`: a 5 s zero run is not counted, a 10 s and a 60 s
+    zero run are, with the right durations; a stop at the very start or
+    end of the activity is included; with non-1 Hz sampling the threshold
+    uses durations (e.g. zero runs at 2 s sampling).
+  - `stop_durations` with gaps: a 30 s recording gap between moving
+    samples is one stop of ~30 s; a 7 s gap (above the 5 s gap threshold
+    but below `MIN_STOP_S`) is not counted; a 6 s zero run followed by a
+    6 s gap merges into one stop of ~12 s.
+  - `time_summary`'s `stops` equals `len(stop_durations(...))` on an
+    activity with zero runs and a gap.
 - `tests/test_ai_tools.py`: `get_activity_details` on an activity with a
   speed column and a zero-speed stretch renders
   the `"Averages (moving | full):"` header and a stop count.
