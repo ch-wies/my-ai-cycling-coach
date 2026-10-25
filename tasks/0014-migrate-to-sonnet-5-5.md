@@ -1,6 +1,6 @@
 ---
 title: Migrate AI model from Claude Sonnet 5 to Claude Sonnet 5.5
-status: ready   # see tasks/WORKFLOW.md for the lifecycle
+status: done   # see tasks/WORKFLOW.md for the lifecycle
 release: v5     # see tasks/WORKFLOW.md; can be set before status: ready
 ---
 
@@ -95,3 +95,44 @@ than as an incidental edit.
 <!-- Filled in during/after implementation, not during drafting. What was
      actually built, especially where it deviates from Technical
      Decisions and why, plus any concrete results worth recording. -->
+
+Implemented as drafted. The single code change is `AI_MODEL =
+"claude-sonnet-5-5"` in `src/constants.py`.
+
+- Small addition: the model mentions in README.md ("claude-sonnet-5") and
+  the CLAUDE.md header ("Sonnet 5") were updated to Sonnet 5.5.
+- Extended breaking-change review against Anthropic's Sonnet 5.5 migration
+  guide, covering items the drafted review didn't list. None needed code:
+  - History-editing check (thinking blocks are tied to unchanged earlier
+    history; on newer accounts, edited history is a 400). Both tool loops
+    (`ui/workers.py`, `ai/plan_adaptor.py`) append the full
+    `response.content`, so they are append-only. Moving `cache_control`
+    markers (plan_adaptor.py) is explicitly allowed. Chat history across
+    turns stores text only, so no thinking blocks are replayed after
+    edits.
+  - Interim notes between tool calls may come back as empty `thinking`
+    blocks instead of `text`. The chat may therefore show less text between
+    tool calls; tool status messages are unaffected. This is behavioural,
+    not breaking.
+  - Effort levels are recalibrated (the default is still `high`; the app
+    sets none). Not tuned, per "like-for-like".
+  - Refusals: Sonnet 5.5 declines in more categories (`stop_reason:
+    "refusal"`). A server-side fallback to Sonnet 5 was considered and left
+    out to keep the swap like-for-like. A refusal surfaces through the
+    existing "stopped unexpectedly" error or the chat warning.
+  - The minimum cacheable prompt drops from 1,024 to 512 tokens. The first
+    request after the switch writes the cache fresh.
+
+Verification:
+- `./check.sh`: all pass (361 tests).
+- Manual end-to-end tests (run by the user in the UI): see below.
+  - Generating a plan (22 weeks): Success
+  - Adapting the plan with an addition to the goals and a tool call: Success
+  - Chat with the coach confirming correct tool use and cache write/read: Success
+  - Log check (`~/.my-ai-cycling-coach-test/app.log`, 2026-10-25): all 9
+    requests used `claude-sonnet-5-5`, with no warnings or errors.
+    - Plan adaptation: `tool_use` → `tool_use` → `end_turn`,
+      `cache_read` 0 → 12,651 → 13,582.
+    - Coach chat: `tool_use` → `tool_use` → `end_turn`, `cache_read`
+      0 → 18,924 → 18,924.
+    - Prompt caching hits from the second request on, in both flows.

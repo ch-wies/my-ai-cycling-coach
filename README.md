@@ -17,7 +17,7 @@ A desktop application for analyzing cycling performance data from intervals.icu 
 - **PyQt6**: Desktop application framework
 - **PyQtGraph**: High-performance data visualization
 - **pandas/NumPy**: Data processing
-- **Anthropic Claude**: AI training coach (claude-sonnet-5)
+- **Anthropic Claude**: AI training coach (claude-sonnet-5-5)
 
 ## Installation
 

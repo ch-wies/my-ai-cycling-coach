@@ -1,6 +1,6 @@
 # Project My AI Cycling Coach
 
-Standalone Desktop application to generate training plans and monitor progress using Anthropic API (Sonnet 5).
+Standalone Desktop application to generate training plans and monitor progress using Anthropic API (Sonnet 5.5).
 
 ## Readme
 

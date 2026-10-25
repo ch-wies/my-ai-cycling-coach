@@ -21,7 +21,7 @@ GOALS_PATH = APP_DIR / "goals.json"
 LOG_PATH = APP_DIR / "app.log"
 
 # AI settings
-AI_MODEL = "claude-sonnet-5"
+AI_MODEL = "claude-sonnet-5-5"
 
 # Activity history window used by the plan adaptor agent and coach chat
 ACTIVITY_HISTORY_WEEKS = 8
