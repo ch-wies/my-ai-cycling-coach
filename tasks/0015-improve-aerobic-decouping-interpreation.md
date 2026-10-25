@@ -1,6 +1,6 @@
 ---
 title: Improve Aerobic decoupling interpretation
-status: ready   # see tasks/WORKFLOW.md for the lifecycle
+status: done   # see tasks/WORKFLOW.md for the lifecycle
 release: v5     # see tasks/WORKFLOW.md; can be set before status: ready
 ---
 
@@ -137,16 +137,32 @@ described.
   > power, Normalized Power, Variability Index, heart rate and speed.
   > Decoupling is only meaningful for steady, continuous, evenly paced
   > efforts. Before using it, check the splits and stops: if average power
-  > differs noticeably between the halves, either half has an elevated
-  > Variability Index (roughly above 1.05, e.g. intervals, surges or
+  > differs by more than ~7% between the halves, either half has an elevated
+  > Variability Index (roughly above 1.15, e.g. intervals, surges or
   > stop-and-go riding), or the ride includes a long stop (roughly 10+
   > minutes) or a large share of stopped time, treat decoupling as not
   > applicable and don't report it as a finding. Also use the splits to
   > judge whether the athlete faded, paced evenly, or negative-split the
   > effort.
 
-  The ~1.05 VI and ~10 min stop values are rules of thumb for the coach,
-  not thresholds applied in code. 10 min was chosen over 5 min because
+  The ~7% power split, ~1.15 VI and ~10 min stop values are rules of thumb
+  for the coach, not thresholds applied in code.
+
+  The VI value was raised from an initial ~1.05 during implementation.
+  Real steady rides sit around 1.05–1.15: a road endurance ride at
+  1.14 | 1.11 and an indoor ride at 1.07 | 1.11. At 1.05 the coach would
+  have discarded decoupling on almost every ride. The power split and the
+  stop checks catch most invalid sessions anyway, and intervals, group
+  rides and stop-and-go riding usually exceed 1.2, so 1.15 still catches
+  within-half unevenness.
+
+  ~7% for the power split is deliberately lenient. An uneven split skews
+  decoupling by itself, because HR doesn't drop in proportion to power. A
+  7% lower second half can show roughly 3–4% decoupling without real
+  drift. That is accepted, since the coach sees the power split next to
+  the number.
+
+  10 min was chosen over 5 min because
   shorter stops mainly cause a brief HR lag on restart, while the drift
   mechanisms (core temperature, cardiovascular state) need roughly 10–20
   min to meaningfully recover.
@@ -214,3 +230,40 @@ Manual (needs Anthropic API calls, run by the user):
 <!-- Filled in during/after implementation, not during drafting. What was
      actually built, especially where it deviates from Technical
      Decisions and why, plus any concrete results worth recording. -->
+
+Implemented as drafted, except for the description's rules of thumb (see
+the deviation below).
+
+- `src/ai/tools.py` only:
+  - The new `get_activity_efficiency` description, with the drafted
+    wording.
+  - A new `_stops_line(time_array, mask)`. It slices to the first..last
+    moving sample, calls `stop_durations()`, and formats total, % of that
+    span and longest stop. It returns `none` or `unavailable (no speed
+    stream)` where those apply.
+  - In `_get_activity_efficiency`, the stops line comes after the
+    decoupling line. The NP, VI and HR split lines sit between Power and
+    Speed, each shown only when its inputs exist.
+- Small addition: the early return is now `if h1 is None or h2 is None:`
+  (previously `h1` only). `_moving_halves` returns both or neither, but
+  mypy can't narrow `h2` from the `h1` check, and the NP slicing indexes
+  with `h2`.
+- `tests/test_ai_tools.py`: `_real_activity` gains an optional `times=`
+  argument for recording-gap tests. There are 10 new
+  `TestGetActivityEfficiency` tests (Test Plan items), and the existing
+  efficiency tests are unchanged.
+
+Verification:
+- `./check.sh`: all pass (361 tests).
+- Real data via `python -m scripts.inspect_activity` (read-only):
+  - i190844156 (road): `Stopped time: 40 min (20% of elapsed), longest
+    stop 24 min`, NP 225 | 211 W, VI 1.14 | 1.11, HR 126 | 130 bpm.
+  - i161860086 (VirtualRide): `Stopped time: none`, VI 1.07 | 1.11.
+  - i181946205 (gravel, no power): stops only, and the decoupling "needs
+    both" line, without errors.
+- Deviation from the drafted description: real rides, even indoor ones,
+  showed a VI above the drafted ~1.05. The VI rule of thumb was therefore
+  raised to ~1.15, and "differs noticeably" for the power split was made
+  concrete as ~7%. See Technical Decisions for the reasoning.
+- Manual coach check (Test Plan; run by the user against the Anthropic API):
+  - Manually checked both, v4 and current codebase. For the activity from August 22, the coach from v4 flagged decoupling as worrysome and the new coach puts the numbers into perspective explaining the uneven pacing. So test passed.

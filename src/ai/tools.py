@@ -21,6 +21,7 @@ from src.analysis.activity_metrics import (
     pedaling_mask,
     representative_dt,
     sample_weights,
+    stop_durations,
     time_summary,
     total_work_kj,
     weighted_average,
@@ -112,9 +113,16 @@ TOOLS: list[ToolParam] = [
         "name": "get_activity_efficiency",
         "description": (
             "Assess pacing and aerobic durability for a specific activity: aerobic "
-            "decoupling (Pw:Hr drift between the first and second half of moving time) and "
-            "first-half vs second-half power and speed splits. Use this to judge whether the "
-            "athlete faded, paced evenly, or negative-split the effort."
+            "decoupling (Pw:Hr drift between the first and second half of moving time), "
+            "stopped time, and first-half vs second-half splits of average power, "
+            "Normalized Power, Variability Index, heart rate and speed. Decoupling is only "
+            "meaningful for steady, continuous, evenly paced efforts. Before using it, check "
+            "the splits and stops: if average power differs by more than ~7% between the "
+            "halves, either half has an elevated Variability Index (roughly above 1.15, e.g. "
+            "intervals, surges or stop-and-go riding), or the ride includes a long stop "
+            "(roughly 10+ minutes) or a large share of stopped time, treat decoupling as not "
+            "applicable and don't report it as a finding. Also use the splits to judge "
+            "whether the athlete faded, paced evenly, or negative-split the effort."
         ),
         "input_schema": {
             "type": "object",
@@ -546,6 +554,27 @@ def _moving_halves(
     return active & (cum <= half), active & (cum > half)
 
 
+def _stops_line(time_array: np.ndarray, mask: np.ndarray | None) -> str:
+    if mask is None:
+        return "  Stopped time: unavailable (no speed stream)"
+    moving_idx = np.flatnonzero(mask[: len(time_array)])
+    if len(moving_idx) == 0:
+        return "  Stopped time: none"
+    # Standing still before rolling off or after finishing doesn't split the
+    # effort, so only stops between the first and last moving sample count.
+    i, j = int(moving_idx[0]), int(moving_idx[-1])
+    stops = stop_durations(time_array[i : j + 1], mask[i : j + 1])
+    if not stops:
+        return "  Stopped time: none"
+    total = sum(stops)
+    span = float(time_array[j] - time_array[i])
+    pct = total / span * 100 if span > 0 else 0.0
+    return (
+        f"  Stopped time: {total / 60:.0f} min ({pct:.0f}% of elapsed), "
+        f"longest stop {max(stops) / 60:.0f} min"
+    )
+
+
 def _get_activity_efficiency(activity_client: IntervalsClient, activity_id: str) -> str:
     try:
         activity = activity_client.download_activity(activity_id)
@@ -555,7 +584,7 @@ def _get_activity_efficiency(activity_client: IntervalsClient, activity_id: str)
     time_array = activity.get_time_array()
     mask = moving_mask(activity)
     h1, h2 = _moving_halves(time_array, mask)
-    if h1 is None:
+    if h1 is None or h2 is None:
         return f"Activity {activity_id}: not enough data to split into halves."
 
     power = activity.get_time_series("power")
@@ -589,12 +618,28 @@ def _get_activity_efficiency(activity_client: IntervalsClient, activity_id: str)
     else:
         lines.append("  Aerobic decoupling: needs both power and heart rate.")
 
+    lines.append(_stops_line(time_array, mask))
+
     # First/second-half splits
     split_lines = []
     p1 = weighted_average(power, time_array, h1)
     p2 = weighted_average(power, time_array, h2)
     if p1 is not None and p2 is not None:
         split_lines.append(f"    Power: {p1:.0f} W | {p2:.0f} W")
+    if power is not None and len(power) > 0:
+        n = min(len(power), len(time_array))
+        np1 = normalized_power(power[:n][h1[:n]], time_array[:n][h1[:n]])
+        np2 = normalized_power(power[:n][h2[:n]], time_array[:n][h2[:n]])
+        if np1 is not None and np2 is not None:
+            split_lines.append(f"    Normalized Power: {np1:.0f} W | {np2:.0f} W")
+            if p1 is not None and p2 is not None and p1 > 0 and p2 > 0:
+                split_lines.append(
+                    f"    Variability Index: {np1 / p1:.2f} | {np2 / p2:.2f}"
+                )
+    hr1 = weighted_average(hr, time_array, h1)
+    hr2 = weighted_average(hr, time_array, h2)
+    if hr1 is not None and hr2 is not None:
+        split_lines.append(f"    Heart rate: {hr1:.0f} bpm | {hr2:.0f} bpm")
     s1 = weighted_average(speed, time_array, h1)
     s2 = weighted_average(speed, time_array, h2)
     if s1 is not None and s2 is not None:

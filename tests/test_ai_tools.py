@@ -7,10 +7,12 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from src.analysis.activity_metrics import grade_series
 from src.data.activity import Activity
 from src.ai.tools import (
+    TOOLS,
     _get_activity_details,
     _get_activity_efficiency,
     _get_activity_intervals,
@@ -59,12 +61,13 @@ def _real_activity(
     sport: str = "Ride",
     elapsed: Optional[float] = None,
     moving_time: Optional[float] = None,
+    times: Optional[np.ndarray] = None,
 ) -> Activity:
     # Unlike _make_activity (a Mock), this builds a real Activity — needed for
     # tests that exercise actual DataFrame-backed behavior, not just call routing.
+    t = times if times is not None else np.arange(n) * dt
     cols: dict[str, Any] = {
-        "timestamp": pd.to_datetime(0, unit="s")
-        + pd.to_timedelta(np.arange(n) * dt, unit="s")
+        "timestamp": pd.to_datetime(0, unit="s") + pd.to_timedelta(t, unit="s")
     }
 
     def _col(val: float | np.ndarray) -> np.ndarray:
@@ -570,6 +573,86 @@ class TestGetActivityEfficiency:
         assert "Failed to download activity 42" in _get_activity_efficiency(
             client, "42"
         )
+
+    def _efficiency(self, **kwargs: Any) -> str:
+        client = Mock()
+        client.download_activity.return_value = _real_activity(**kwargs)
+        return _get_activity_efficiency(client, "42")
+
+    def test_per_half_np_vi_hr_for_steady_ride(self) -> None:
+        result = self._efficiency(n=600, power=200.0, heart_rate=150.0)
+        assert "Normalized Power: 200 W | 200 W" in result
+        assert "Variability Index: 1.00 | 1.00" in result
+        assert "Heart rate: 150 bpm | 150 bpm" in result
+
+    def test_np_and_vi_catch_within_half_unevenness(self) -> None:
+        # Second half alternates 60 s at 400 W / 60 s at 0 W: same average as
+        # the steady first half, but far less even.
+        blocks = np.tile(np.concatenate([np.full(60, 400.0), np.zeros(60)]), 5)
+        power = np.concatenate([np.full(600, 200.0), blocks])
+        result = self._efficiency(n=1200, power=power)
+        assert "Power: 200 W | 200 W" in result
+        np_line = result.split("Normalized Power: ")[1].split("\n")[0]
+        vi_line = result.split("Variability Index: ")[1].split("\n")[0]
+        np1, np2 = (float(v.strip(" W")) for v in np_line.split("|"))
+        vi1, vi2 = (float(v) for v in vi_line.split("|"))
+        assert np2 > np1 * 1.2
+        assert vi1 == pytest.approx(1.0)
+        assert vi2 > 1.2
+
+    def test_missing_hr_keeps_np_and_vi(self) -> None:
+        result = self._efficiency(n=600, power=200.0, heart_rate=None)
+        assert "needs both power and heart rate" in result
+        assert "Normalized Power:" in result
+        assert "Variability Index:" in result
+        assert "Heart rate:" not in result
+
+    def test_no_stops(self) -> None:
+        assert "Stopped time: none" in self._efficiency(n=600)
+
+    def test_short_and_long_stops_with_same_total(self) -> None:
+        def _speed_with_stops(stop_s: int, count: int) -> np.ndarray:
+            ride = np.full(600, 8.0)
+            parts = [ride]
+            for _ in range(count):
+                parts += [np.zeros(stop_s), ride]
+            return np.concatenate(parts)
+
+        short = _speed_with_stops(240, 3)
+        long = _speed_with_stops(720, 1)
+        short_result = self._efficiency(n=len(short), speed=short)
+        long_result = self._efficiency(n=len(long), speed=long)
+        assert "Stopped time: 12 min" in short_result
+        assert "Stopped time: 12 min" in long_result
+        assert "longest stop 4 min" in short_result
+        assert "longest stop 12 min" in long_result
+
+    def test_recording_gap_is_a_stop(self) -> None:
+        times = np.concatenate([np.arange(600.0), np.arange(600.0) + 599.0 + 301.0])
+        result = self._efficiency(n=1200, times=times)
+        assert "Stopped time: 5 min" in result
+        assert "longest stop 5 min" in result
+
+    def test_stop_shorter_than_minimum_not_reported(self) -> None:
+        speed = np.concatenate([np.full(300, 8.0), np.zeros(5), np.full(300, 8.0)])
+        assert "Stopped time: none" in self._efficiency(n=len(speed), speed=speed)
+
+    def test_stops_at_start_and_end_ignored(self) -> None:
+        speed = np.concatenate([np.zeros(120), np.full(600, 8.0), np.zeros(120)])
+        assert "Stopped time: none" in self._efficiency(n=len(speed), speed=speed)
+
+    def test_no_speed_stream_stops_unavailable(self) -> None:
+        result = self._efficiency(n=600, speed=None)
+        assert "Stopped time: unavailable (no speed stream)" in result
+        assert "Aerobic decoupling (Pw:Hr):" in result
+        assert "Normalized Power:" in result
+
+    def test_description_limits_decoupling_to_steady_efforts(self) -> None:
+        tool = next(t for t in TOOLS if t["name"] == "get_activity_efficiency")
+        description = tool.get("description", "")
+        assert "Variability Index" in description
+        assert "stop" in description
+        assert "not applicable" in description
 
 
 class TestGetActivityIntervals:
