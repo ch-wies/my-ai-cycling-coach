@@ -56,7 +56,6 @@ def _real_activity(
     speed: Any = 8.0,
     altitude: Any = None,
     temperature: Any = None,
-    moving: Any = True,
     sport: str = "Ride",
     elapsed: Optional[float] = None,
     moving_time: Optional[float] = None,
@@ -93,13 +92,6 @@ def _real_activity(
         # once at Activity-build time rather than at each consumer.
         time_array = np.arange(n, dtype=float) * dt
         cols["grade"] = grade_series(cols["altitude"], cols["distance"], time_array)
-    if moving is not None:
-        cols["moving"] = (
-            np.asarray(moving, dtype=bool)
-            if not np.isscalar(moving)
-            else np.full(n, bool(moving))
-        )
-
     return Activity(
         sport=sport,
         total_elapsed_time=elapsed if elapsed is not None else (n - 1) * dt,
@@ -295,7 +287,7 @@ class TestGetActivityDetails:
         assert "Moving:" in result
         assert "Max power: 200 W" in result
 
-    def test_dual_averages_when_moving_stream_present(self) -> None:
+    def test_dual_averages_when_speed_present(self) -> None:
         client = Mock()
         client.download_activity.return_value = _real_activity(n=300, power=180.0)
         result = _get_activity_details(client, "42")
@@ -303,14 +295,27 @@ class TestGetActivityDetails:
         # constant 180 W → both columns equal
         assert "Power: 180 | 180 W" in result
 
-    def test_single_average_when_no_moving_stream(self) -> None:
+    def test_single_average_when_no_speed(self) -> None:
         client = Mock()
         client.download_activity.return_value = _real_activity(
-            n=300, power=180.0, moving=None
+            n=300, power=180.0, speed=None
         )
         result = _get_activity_details(client, "42")
         assert "Averages:" in result
-        assert "no moving stream" in result
+        assert "Moving: unavailable (no moving time or speed stream)" in result
+
+    def test_zero_speed_stretch_is_a_stop(self) -> None:
+        speed = np.concatenate([np.full(200, 8.0), np.zeros(60), np.full(200, 8.0)])
+        power = np.concatenate([np.full(200, 200.0), np.zeros(60), np.full(200, 200.0)])
+        client = Mock()
+        client.download_activity.return_value = _real_activity(
+            n=460, power=power, speed=speed
+        )
+        result = _get_activity_details(client, "42")
+        assert "Averages (moving | full):" in result
+        assert "(1 stop)" in result
+        # stopped samples (0 W) only drag down the full average
+        assert "Power: 200 | 174 W" in result
 
     def test_pedalling_power_excludes_coasting(self) -> None:
         # First half pedalling at 200 W, second half coasting (0 W, cadence 0)

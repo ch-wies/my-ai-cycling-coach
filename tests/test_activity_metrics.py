@@ -12,10 +12,12 @@ from src.analysis.activity_metrics import (
     elevation_changes,
     grade_series,
     heart_rate_recovery_60s,
+    moving_mask,
     normalized_power,
     pedaling_mask,
     representative_dt,
     sample_weights,
+    stop_durations,
     time_summary,
     total_work_kj,
     weighted_average,
@@ -27,11 +29,12 @@ def _activity(
     dt: float = 1.0,
     elapsed: Optional[float] = None,
     moving_time: Optional[float] = None,
+    times: Optional[np.ndarray] = None,
 ) -> Activity:
     n = len(next(iter(streams.values())))
+    t = times if times is not None else np.arange(n) * dt
     data: dict[str, Any] = {
-        "timestamp": pd.to_datetime(0, unit="s")
-        + pd.to_timedelta(np.arange(n) * dt, unit="s")
+        "timestamp": pd.to_datetime(0, unit="s") + pd.to_timedelta(t, unit="s")
     }
     data.update(streams)
     return Activity(
@@ -91,6 +94,75 @@ class TestSampleWeights:
 # ---------------------------------------------------------------------------
 
 
+def _speed(*runs: tuple[float, int]) -> np.ndarray:
+    return np.concatenate([np.full(count, value) for value, count in runs])
+
+
+class TestMovingMask:
+    def test_speed_above_zero_is_moving(self) -> None:
+        act = _activity({"speed": np.array([0.0, 0.03, 5.0, 0.0])})
+        mask = moving_mask(act)
+        assert mask is not None
+        assert mask.tolist() == [False, True, True, False]
+
+    def test_ignores_moving_column(self) -> None:
+        act = _activity(
+            {"speed": np.array([5.0, 0.0]), "moving": np.array([False, True])}
+        )
+        mask = moving_mask(act)
+        assert mask is not None
+        assert mask.tolist() == [True, False]
+
+    def test_no_speed_column(self) -> None:
+        assert moving_mask(_activity({"power": np.full(10, 200.0)})) is None
+
+    def test_empty_speed(self) -> None:
+        assert moving_mask(_activity({"speed": np.array([])})) is None
+
+    def test_nan_speed_is_not_moving(self) -> None:
+        mask = moving_mask(_activity({"speed": np.array([5.0, np.nan, 5.0])}))
+        assert mask is not None
+        assert mask.tolist() == [True, False, True]
+
+
+class TestStopDurations:
+    def test_minimum_stop_duration(self) -> None:
+        speed = _speed((5, 20), (0, 5), (5, 20), (0, 10), (5, 20), (0, 60), (5, 20))
+        t = np.arange(len(speed), dtype=float)
+        assert stop_durations(t, speed > 0) == pytest.approx([10.0, 60.0])
+
+    def test_leading_and_trailing_stops_included(self) -> None:
+        speed = _speed((0, 15), (5, 30), (0, 12))
+        t = np.arange(len(speed), dtype=float)
+        assert stop_durations(t, speed > 0) == pytest.approx([15.0, 12.0])
+
+    def test_threshold_uses_durations_not_sample_counts(self) -> None:
+        # At 2 s sampling, 4 zero samples are 8 s (no stop), 5 are 10 s (stop).
+        speed = _speed((5, 10), (0, 4), (5, 10), (0, 5), (5, 10))
+        t = np.arange(len(speed), dtype=float) * 2.0
+        assert stop_durations(t, speed > 0) == pytest.approx([10.0])
+
+    def test_recording_gap_is_a_stop(self) -> None:
+        t = np.concatenate([np.arange(20.0), np.arange(20.0) + 19.0 + 30.0])
+        mask = np.ones(len(t), dtype=bool)
+        assert stop_durations(t, mask) == pytest.approx([29.0])
+
+    def test_short_gap_is_not_a_stop(self) -> None:
+        # 7 s delta: above the 5 s gap threshold, below MIN_STOP_S
+        t = np.concatenate([np.arange(20.0), np.arange(20.0) + 19.0 + 7.0])
+        mask = np.ones(len(t), dtype=bool)
+        assert stop_durations(t, mask) == []
+
+    def test_gap_merges_with_adjacent_zero_run(self) -> None:
+        # 6 zero-speed samples, then a 6 s gap before moving resumes
+        t = np.concatenate([np.arange(26.0), np.arange(20.0) + 25.0 + 6.0])
+        speed = _speed((5, 20), (0, 6), (5, 20))
+        assert stop_durations(t, speed > 0) == pytest.approx([11.0])
+
+    def test_empty(self) -> None:
+        assert stop_durations(np.array([]), np.array([], dtype=bool)) == []
+
+
 class TestTimeSummary:
     def test_prefers_metadata_moving_time(self) -> None:
         act = _activity({"power": np.full(100, 200.0)}, elapsed=120, moving_time=100)
@@ -100,8 +172,7 @@ class TestTimeSummary:
         assert s["stopped_s"] == 20
 
     def test_moving_from_mask_when_no_metadata(self) -> None:
-        moving = np.array([True] * 60 + [False] * 40)
-        act = _activity({"power": np.full(100, 1.0), "moving": moving}, elapsed=99)
+        act = _activity({"speed": _speed((5, 60), (0, 40))}, elapsed=99)
         s = time_summary(act)
         # 60 moving samples at 1 s each
         assert s["moving_s"] == pytest.approx(60.0)
@@ -114,11 +185,15 @@ class TestTimeSummary:
         assert s["elapsed_s"] == 49
 
     def test_counts_multiple_stops(self) -> None:
-        moving = np.array(
-            [True] * 10 + [False] * 5 + [True] * 10 + [False] * 5 + [True] * 10
-        )
-        act = _activity({"moving": moving})
-        assert time_summary(act)["stops"] == 2
+        speed = _speed((5, 20), (0, 15), (5, 20), (0, 15), (5, 20))
+        assert time_summary(_activity({"speed": speed}))["stops"] == 2
+
+    def test_stop_count_matches_stop_durations(self) -> None:
+        speed = _speed((5, 20), (0, 3), (5, 20), (0, 12), (5, 40))
+        t = np.arange(len(speed), dtype=float)
+        t[70:] += 30.0  # recording gap in the last moving stretch
+        act = _activity({"speed": speed}, times=t)
+        assert time_summary(act)["stops"] == len(stop_durations(t, speed > 0)) == 2
 
 
 # ---------------------------------------------------------------------------

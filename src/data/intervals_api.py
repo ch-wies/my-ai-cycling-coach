@@ -175,8 +175,8 @@ class IntervalsClient:
             data["grade"] = grade_series(data["altitude"], data["distance"], time_array)
 
         # No per-sample "moving" stream is mapped (intervals.icu doesn't
-        # expose Strava's boolean moving stream); total_moving_time from
-        # metadata still lets time_summary() report a moving/stopped split.
+        # expose one); moving_mask() derives it as speed > 0, since the
+        # recording device already zeroes speed when stopped.
         activity = Activity(
             sport=metadata.get("type") or metadata.get("sport_type") or "cycling",
             start_time=start_time,

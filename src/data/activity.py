@@ -76,6 +76,5 @@ class Activity:
 
     @property
     def available_metrics(self) -> list[str]:
-        # 'moving' is a boolean flag from the data source, not a plottable measurement.
-        exclude = {"timestamp", "moving"}
+        exclude = {"timestamp"}
         return [col for col in self.data.columns if col not in exclude]

@@ -324,7 +324,7 @@ def _get_activity_details(activity_client: IntervalsClient, activity_id: str) ->
         lines.append(f"  Moving: {_fmt_duration(times['moving_s'])}")
         lines.append(f"  Stopped: {_fmt_duration(times['stopped_s'])}{stop_note}")
     else:
-        lines.append("  Moving: unavailable (no moving stream from data source)")
+        lines.append("  Moving: unavailable (no moving time or speed stream)")
 
     # Elevation
     ascent, descent = elevation_changes(

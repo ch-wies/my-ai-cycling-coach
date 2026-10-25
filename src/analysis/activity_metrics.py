@@ -9,10 +9,11 @@ place. Two design decisions worth knowing:
   weights from the actual timestamps and clamp gaps so a pause's duration is
   never attributed to the single sample that follows it.
 
-* "Moving" is taken from the data source's own ``moving`` boolean stream when
-  present. We do not re-derive it from speed (GPS-only rides drift and would
-  fool a threshold). If the source gives us no moving stream, moving-only
-  stats are simply omitted rather than guessed.
+* "Moving" is derived as ``speed > 0``. The data source exposes no per-sample
+  moving stream, but the recording device already does the stop detection:
+  speed is exactly 0 while stopped, with no GPS jitter (checked on Garmin
+  recordings; the result matches intervals.icu's ``moving_time``). Without a
+  speed stream, moving-only stats are omitted rather than guessed.
 """
 
 from typing import Optional
@@ -27,6 +28,10 @@ from src.data.activity import Activity
 GAP_FACTOR = 3.0
 MIN_GAP_SECONDS = 5.0
 
+# Not-moving stretches shorter than this (track stands, slow hairpins, brief
+# dropouts) are not counted as stops. Moving time still uses the raw mask.
+MIN_STOP_S = 10.0
+
 
 def representative_dt(time_array: np.ndarray) -> float:
     # Median of positive deltas, not time[1] - time[0] — the first delta is
@@ -38,6 +43,10 @@ def representative_dt(time_array: np.ndarray) -> float:
     if len(diffs) == 0:
         return 1.0
     return float(np.median(diffs))
+
+
+def _gap_threshold(med_dt: float) -> float:
+    return max(GAP_FACTOR * med_dt, MIN_GAP_SECONDS)
 
 
 def sample_weights(
@@ -54,7 +63,7 @@ def sample_weights(
 
     med = representative_dt(time_array)
     if gap_threshold is None:
-        gap_threshold = max(GAP_FACTOR * med, MIN_GAP_SECONDS)
+        gap_threshold = _gap_threshold(med)
 
     diffs = np.diff(np.asarray(time_array, dtype=float))
     w = np.empty(n)
@@ -65,10 +74,40 @@ def sample_weights(
 
 
 def moving_mask(activity: Activity) -> Optional[np.ndarray]:
-    series = activity.get_time_series("moving")
-    if series is None or len(series) == 0:
+    speed = activity.get_time_series("speed")
+    if speed is None or len(speed) == 0:
         return None
-    return np.asarray(series).astype(bool)
+    return np.asarray(speed, dtype=float) > 0
+
+
+def stop_durations(time_array: np.ndarray, mask: np.ndarray) -> list[float]:
+    # A recording gap is not-moving time too (e.g. auto-pause during a café
+    # stop), but sample_weights hides it, so the unassigned part of each gap
+    # (delta - median dt) is added back here and merged with adjacent
+    # mask-false samples into one stop.
+    n = min(len(time_array), len(mask))
+    if n == 0:
+        return []
+    t = np.asarray(time_array[:n], dtype=float)
+    w = sample_weights(t)
+    med = representative_dt(t)
+    threshold = _gap_threshold(med)
+    deltas = np.diff(t)
+
+    stops: list[float] = []
+    current = 0.0
+    for i in range(n):
+        if i > 0 and deltas[i - 1] > threshold:
+            current += float(deltas[i - 1]) - med
+        if not mask[i]:
+            current += float(w[i])
+        else:
+            if current >= MIN_STOP_S:
+                stops.append(current)
+            current = 0.0
+    if current >= MIN_STOP_S:
+        stops.append(current)
+    return stops
 
 
 # At or above this cadence the rider is considered to be pedalling (below it,
@@ -91,16 +130,6 @@ def pedaling_mask(
     return None
 
 
-def _count_stops(mask: np.ndarray) -> int:
-    if mask is None or len(mask) == 0:
-        return 0
-    not_moving = (~mask).astype(int)
-    starts = int(np.sum(np.diff(not_moving) == 1))
-    if not_moving[0]:
-        starts += 1
-    return starts
-
-
 def time_summary(activity: Activity) -> dict:
     time_array = activity.get_time_array()
     elapsed = getattr(activity, "total_elapsed_time", None)
@@ -119,7 +148,7 @@ def time_summary(activity: Activity) -> dict:
         result["moving_s"] = moving
         result["stopped_s"] = max(0.0, elapsed - moving)
     if mask is not None:
-        result["stops"] = _count_stops(mask)
+        result["stops"] = len(stop_durations(time_array, mask))
     return result
 
 

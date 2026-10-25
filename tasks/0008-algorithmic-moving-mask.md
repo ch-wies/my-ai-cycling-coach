@@ -1,6 +1,6 @@
 ---
 title: Derive a moving mask algorithmically
-status: ready   # see tasks/WORKFLOW.md for the lifecycle
+status: done   # see tasks/WORKFLOW.md for the lifecycle
 release: v5     # see tasks/WORKFLOW.md; can be set before status: ready
 ---
 
@@ -215,3 +215,50 @@ Stories 0011/0012 (decoupling) build on that last one.
 <!-- Filled in during/after implementation, not during drafting. What was
      actually built, especially where it deviates from Technical
      Decisions and why, plus any concrete results worth recording. -->
+
+Implemented as drafted.
+
+- `moving_mask()` returns `speed > 0` (float cast, so NaN → not moving),
+  or `None` for a missing or empty speed stream.
+- `MIN_STOP_S = 10.0` and the public `stop_durations(time_array, mask)` are
+  in `src/analysis/activity_metrics.py` (also exported from
+  `src.analysis`). `stop_durations` is a single pass over the samples:
+  - a gap before sample `i` adds `delta − median dt`;
+  - a mask-false sample adds its `sample_weights` weight;
+  - a moving sample closes the current stop, which is kept if it is
+    ≥ `MIN_STOP_S`.
+
+  This merges gaps with adjacent zero-speed runs and keeps leading and
+  trailing stops. The gap threshold formula is factored into
+  `_gap_threshold()` so that `sample_weights` and `stop_durations` can't
+  drift apart.
+- `time_summary()`: `stops = len(stop_durations(...))`, and `_count_stops`
+  is removed. Moving-time logic is unchanged.
+- `Activity.available_metrics`' `"moving"` exclusion is removed, and the
+  module docstring and the `intervals_api.py` comment are rewritten.
+- `tools.py`: the fallback now reads
+  `Moving: unavailable (no moving time or speed stream)`, since that is the
+  only case where it can still appear.
+- Tests: `TestMovingMask`, `TestStopDurations` and the rewritten
+  `TestTimeSummary` in `tests/test_activity_metrics.py`. In
+  `tests/test_ai_tools.py`, `_real_activity` loses its `moving=` argument,
+  the no-speed and dual-averages tests are adapted, and a new zero-speed
+  stop test was added.
+
+Verification:
+- `./check.sh`: all pass (351 tests).
+- Moving time vs intervals.icu `moving_time` (read-only, throwaway script):
+  45 recent outdoor activities (Ride, GravelRide, MountainBikeRide;
+  25 min–11.6 h) plus 5 VirtualRides. All 50 are within
+  `max(30 s, 0.5%)`, most match exactly. Worst case relative to tolerance:
+  i161859892 (MTB) +20 s against 30 s. Largest absolute difference:
+  i174129337 −26 s on a 4.9 h ride (tolerance 87 s). VirtualRides are
+  0 to +1 s, and four of the five show 0 stops.
+- Stop counts on real data are plausible. Road rides have 0–19 stops;
+  gravel and MTB have 40–95 stops (frequent short stops of 10 s or more)
+  with long stops recovered, e.g. 9,879 s on i181946205.
+- `python -m scripts.inspect_activity i190844156` (outdoor):
+  `Stopped: 40m14s (11 stops)`, and `Averages (moving | full)` with moving
+  values above full (Power 194 | 155 W, Speed 30.3 | 24.3 km/h).
+  i161860086 (VirtualRide): moving = elapsed, no stop count, equal
+  averages.
